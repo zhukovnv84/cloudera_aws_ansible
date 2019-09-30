@@ -1,0 +1,4 @@
+---
+#ansible_private_key_file: files/sshkeys/sshkey.pem
+host_template: HostTemplate-Gateway
+role_ref_names: HDFS-HTTPFS-1

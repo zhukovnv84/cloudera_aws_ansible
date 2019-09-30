@@ -1,0 +1,33 @@
+---
+- name: Stop current server Cloudera Services
+  uri:
+    url: "{{ cloudera_url }}:{{ cloudera_port }}/api/v16/clusters/{{ cluster_name }}/commands/stop"
+    method: POST
+    user: "{{ username }}"
+    password: "{{ password_curl }}"
+    force_basic_auth: yes
+    body_format: json
+    no_log: true
+
+- name: Stop Cloudera Management Service
+  uri:
+    url: "{{ cloudera_url }}:{{ cloudera_port }}/api/v16/cm/service/commands/stop"
+    method: POST
+    user: "{{ username }}"
+    password: "{{ password_curl }}"
+    force_basic_auth: yes
+    body_format: json
+    no_log: true
+
+
+- pause:
+    seconds: 60
+
+- name: Stop Cloudera-scm-server,agent
+  service:
+     name: "{{ item }}"
+     state: stopped
+  with_items:
+     - cloudera-scm-server
+     - cloudera-scm-agent
+

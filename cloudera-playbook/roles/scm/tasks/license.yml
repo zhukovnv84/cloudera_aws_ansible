@@ -1,0 +1,35 @@
+---
+
+#- name: Check license file exists
+#  stat: path={{ hostvars[scm_hostname]['license_file'] }}
+#  stat: path={{ hostvars[groups['tag_scm_server'][0]]['inventory_hostname']['license_file']  }}
+#  register: file
+
+
+#- debug: msg="License file '{{ hostvars[scm_hostname]['license_file'] }}' exists = {{ file.stat.exists }}"
+#- debug: msg="License file '{{ hostvars[groups['tag_scm_server'][0]]['inventory_hostname']['license_file'] }}' exists = {{ file.stat.exists }}"
+
+
+#- set_fact:
+#    scm_hostname={{ hostvars[item].ansible_default_ipv4.address }}
+#  with_items: "{{ groups['tag_scm_server'] }}"
+
+
+
+- name: Begin Cloudera Manager trial license
+  uri:
+    url: "{{ cm_api_url }}/cm/trial/begin"
+#    url: "{{ hostvars[groups['tag_scm_server'][0]]['inventory_hostname']  }}/cm/trial/begin"
+    method: POST
+    status_code: 200
+    force_basic_auth: yes
+    user: "{{ scm_default_user }}"
+    password: "{{ scm_default_pass }}"
+  ignore_errors: True
+  notify:
+    - restart cloudera-scm-server
+#  when: file.stat.exists == False
+
+- meta: flush_handlers
+
+

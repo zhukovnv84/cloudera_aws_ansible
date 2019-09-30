@@ -1,0 +1,157 @@
+---
+- name: Add Cloudera Manager yum repository
+  yum_repository:
+    name: cloudera-manager
+    description: Cloudera Manager
+    baseurl: http://archive.cloudera.com/cm5/redhat/{{ ansible_distribution_major_version }}/x86_64/cm/5/
+    gpgkey: http://archive.cloudera.com/cm5/redhat/{{ ansible_distribution_major_version }}/x86_64/cm/RPM-GPG-KEY-cloudera
+    gpgcheck: yes
+    enabled: yes
+  ignore_errors: yes
+
+- name: Add EPEL yum repository
+  yum_repository:
+    name: epel
+    description: Extra Packages for Enterprise Linux $releasever
+    mirrorlist: https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+    failovermethod: priority
+    gpgcheck: yes
+    enabled: yes
+  ignore_errors: yes
+
+
+# Install java in new server
+
+- name: copy oracle java
+  copy:
+     src:  files/jdk-8u181-linux-x64.rpm
+     dest: /tmp/jdk-8u181-linux-x64.rpm
+
+
+- name: yum install oracle java
+  shell: yum -y install /tmp/jdk-8u181-linux-x64.rpm
+  ignore_errors: yes
+
+
+- name: Install Cloudera Manager Server
+  yum: name={{ item }} state=present
+  with_items:
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-daemons-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-agent-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-server-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+
+
+- set_fact:
+    db_hostname={{ hostvars[item][ansible_all_ipv4_addresses] }}
+  with_items: "{{ groups['tag_db_server'] }}"
+
+
+- set_fact:
+    scm_hostname={{ hostvars[item].ansible_all_ipv4_addresses }}
+  with_items: "{{ groups['tag_scmnew_server'] }}"
+
+
+#- name: Prepare Cloudera Manager Server External Database
+#  command: /usr/share/cmf/schema/scm_prepare_database.sh
+#             -f
+#             --host {{ db_hostname }}
+#             mysql {{ databases.scm.name }} {{ databases.scm.user }} {{ databases.scm.pass }}
+#  changed_when: False
+
+#- name: mkdir
+#  shell: mkdir -p files/sshkeys
+
+
+- name: get hostname
+  command: hostname
+  register: hostname_ouput
+  delegate_to:  "{{ groups['tag_scm_server'][0] }}"
+
+
+- name: copy ssh key 
+  copy:
+     src:  files/sshkeys/sshkey.pem
+     dest: /tmp/sshkey.pem
+
+- name: chmod sshkey
+  shell:  chmod 0400 /tmp/sshkey.pem
+
+
+- name: Synchronization using rsync protocol (push)
+  synchronize:
+    src: /etc/cloudera-scm-server/db.properties
+    dest: rsync://{{hostname_ouput.stdout}}/etc/cloudera-scm-server/db.properties
+  delegate_to: tag_scm_server
+
+#- name: scp files
+#  raw: scp -i /tmp/sshkey.pem /etc/cloudera-scm-server/db.properties centos@{{hostname_ouput.stdout}}:/etc/cloudera-scm-server/
+#  delegate_to: tag_scm_server
+
+#- name: get hostname
+#  command: hostname
+#  register: hostname_ouput
+#  delegate_to: tag_scm_server
+
+#- fetch: dest=/etc/cloudera-scm-server/{{ hostname_ouput.stdout }}/db.properties src=/etc/cloudera-scm-server/db.properties flat=yes
+ # delegate_to: tag_scm_server
+
+
+
+
+- name: stop current cluster services
+  shell: curl -k -u "{{scm_default_user }}:{{scm_default_pass }}" -L http://172.31.47.31:7180/api/v16/clusters/cluster/commands/stop
+#    raw: curl -k -u "{{scm_default_user }}":"{{scm_default_pass }}" -L "{{hostvars[groups['tag_scm_server'][0]]['inventory_hostname']}}":"{{ scm_port  }}"/api/v16/clusters/cluster/commands/stop
+  delegate_to: localhost
+   
+
+
+#- name: Stop current server Cloudera Services
+#  uri:
+#    url: http://"{{ hostvars[groups['tag_scm_server'][0]]['inventory_hostname']  }}:{{ scm_port }}/api/v16/clusters/{{ cluster_name }}/commands/stop"
+#    method: POST
+#    user: "{{ scm_default_user }}"
+#    password: "{{ scm_default_pass }}"
+#    force_basic_auth: yes
+#    body_format: json
+#    no_log: true
+#  delegate_to: localhost
+
+- name: Stop Cloudera Management Service
+  uri:
+    url: "{{ hostvars[groups['tag_scm_server'][0]]['inventory_hostname']  }}:{{ scm_port }}/api/v16/cm/service/commands/stop"
+    method: POST
+    user: "{{ scm_default_user }}"
+    password: "{{ scm_default_pass }}"
+    force_basic_auth: yes
+    body_format: json
+    no_log: true
+  delegate_to: localhost
+
+
+- pause:
+    seconds: 60
+
+- name: Stop Cloudera-scm-server,agent
+  service:
+     name: "{{ item }}"
+     state: stopped
+  with_items:
+     - cloudera-scm-server
+     - cloudera-scm-agent
+  delegate_to: tag_scm_server
+
+
+
+
+
+
+
+
+#- name: Create a tar.gz cloudera-scm-server
+#   archive:
+#     path: /path/to/folder
+#     dest: /path/folder.tar.gz
+#     format: gz
+#     force_archive: true
+
+

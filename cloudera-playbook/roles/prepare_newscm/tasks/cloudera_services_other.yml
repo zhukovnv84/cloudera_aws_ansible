@@ -1,0 +1,34 @@
+---
+  - name: Unarchive a file that is already on the remote machine
+    unarchive:
+      src: /tmp/folder.tar.gz
+      dest: /usr/local/bin
+      remote_src: yes
+  - name: Stop Cloudera-scm-server,agent
+    service:
+      name: "{{ item }}"
+      state: stopped
+    with_items:
+      - cloudera-scm-server
+      - cloudera-scm-agent
+    become: yes
+  - name: Stop Cloudera Management Service
+    uri:
+      url: "{{ cloudera_url }}:{{ cloudera_port }}/api/v16/cm/service/commands/start"
+      method: POST
+      user: "{{ username }}"
+      password: "{{ password_curl }}"
+      force_basic_auth: yes
+      body_format: json
+      no_log: true
+  - name: Start Cloudera Services
+    uri:
+      url: "{{ cloudera_url }}:{{ cloudera_port }}/api/v16/clusters/{{ cluster_name }}/commands/start"
+      method: POST
+      user: "{{ username }}"
+      password: "{{ password_curl }}"
+      force_basic_auth: yes
+      body_format: json
+      no_log: true
+
+

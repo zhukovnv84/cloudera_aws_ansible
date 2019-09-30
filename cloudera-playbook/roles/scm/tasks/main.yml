@@ -1,0 +1,100 @@
+---
+
+- include_vars: ../../../group_vars/tag_db_server.yml
+
+
+
+
+- name: Add EPEL GPG key
+  rpm_key: key=http://dl.fedoraproject.org/pub/epel/RPM-GPG-KEY-EPEL-7 state=present
+
+- stat: path=/etc/yum.repos.d/epel.repo
+  register: epel_exists
+
+- name: Add EPEL yum repository
+  yum_repository:
+    name: epel
+    description: Extra Packages for Enterprise Linux $releasever
+    mirrorlist: https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=$basearch
+    baseurl: http://download.fedoraproject.org/pub/epel/$releasever/$basearch/
+    failovermethod: priority
+    gpgcheck: yes
+    enabled: yes
+  when: epel_exists.stat.exists == False
+    
+
+- name: Install Cloudera Manager Server
+  yum: name={{ item }} state=present
+  with_items:
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-daemons-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-agent-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-server-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+
+
+- set_fact:
+    db_hostname={{ hostvars[item].ansible_default_ipv4.address }}
+  with_items: "{{ groups['tag_db_server'] }}"
+
+
+- set_fact:
+    scm_hostname={{ hostvars[item].ansible_default_ipv4.address }}
+  with_items: "{{ groups['tag_scm_server'] }}"
+
+
+- name: Prepare Cloudera Manager Server External Database
+  command: /usr/share/cmf/schema/scm_prepare_database.sh
+             -f
+             --host {{ db_hostname }}
+             mysql {{ databases.scm.name }} {{ databases.scm.user }} {{ databases.scm.pass }}
+  changed_when: False
+
+
+
+- name: Start the Cloudera Manager Server
+  service: name={{ item }} state=restarted enabled=yes
+  with_items:
+    - cloudera-scm-server
+    - cloudera-scm-agent
+
+
+- pause:
+    minutes: 2
+
+
+# Trigger handler to wait for SCM to startup
+- meta: flush_handlers
+
+- name: Get Cloudera Manager API version
+  uri:
+    url: http://{{ hostvars[scm_hostname]['inventory_hostname'] }}:{{ scm_port }}/api/version
+    method: GET
+    status_code: 200
+    user: "{{ scm_default_user }}"
+    password: "{{ scm_default_pass }}"
+    force_basic_auth: yes
+    return_content: yes
+  register: result
+
+- set_fact: cm_api_url="http://{{ hostvars[scm_hostname]['inventory_hostname'] }}:{{ scm_port }}/api/{{ result.content }}"
+- debug: var=cm_api_url
+
+
+
+- include: api.yml
+
+
+- name: Get SCM hostIds for inventory hosts
+  action: scm_hosts
+  register: scm_hosts_result
+
+
+- set_fact: scm_host_ids="{{ scm_hosts_result.host_ids }}"
+- debug: var=scm_host_ids
+
+- set_fact: scm_host_names="{{ scm_hosts_result.host_names }}"
+- debug: var=scm_host_names
+
+
+- include: license.yml
+- include: scm.yml
+- include: cms.yml

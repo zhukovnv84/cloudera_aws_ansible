@@ -1,0 +1,10 @@
+- name: copy oracle java
+  copy:
+     src:  files/jdk-8u181-linux-x64.rpm
+     dest: /tmp/jdk-8u181-linux-x64.rpm
+
+
+- name: yum install oracle java
+  shell: yum -y install /tmp/jdk-8u181-linux-x64.rpm
+  ignore_errors: yes
+

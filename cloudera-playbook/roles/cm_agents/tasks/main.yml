@@ -1,0 +1,119 @@
+
+- name: Add Cloudera Manager yum repository
+  yum_repository:
+    name: cloudera-manager
+    description: Cloudera Manager
+    baseurl: http://archive.cloudera.com/cm5/redhat/5/x86_64/cm/5.11.2/
+    gpgkey: http://archive.cloudera.com/cm5/redhat/5/x86_64/cm/RPM-GPG-KEY-cloudera
+    gpgcheck: yes
+    enabled: yes
+  when: (ansible_distribution|lower == "redhat") or (ansible_distribution|lower == "centos")
+
+
+
+- name: Clean all
+  shell: yum clean all
+- name: Makecache
+  shell: yum makecache
+
+
+
+- name: get hostname
+  command: hostname
+  register: hostname_ouput
+
+- name: empty file
+  shell: echo > /etc/hosts
+  become: yes
+
+
+#- name: update host file
+#  lineinfile:
+#     dest: /etc/hosts
+#     regexp: '{{ ansible_default_ipv4.address }}.{{hostname_ouput.stdout}}'
+#     line: "{{ ansible_default_ipv4.address }} {{hostname_ouput.stdout}}"
+#     state: present
+#  become: yes
+
+
+
+- name: update host file
+  lineinfile:
+     dest: /etc/hosts
+     regexp: '{{ ansible_default_ipv4.address }}.{{hostname_ouput.stdout}}'
+#     line: "{{ hostvars[item].ansible_default_ipv4.address }} {{item}}"
+     line: "{{ hostvars[item].ansible_default_ipv4.address }} {{hostvars[item].hostname_ouput.stdout}}"
+     state: present
+  with_items:  "{{groups['tag_cdh_servers']}}"
+#  ignore_errors: yes
+
+
+#- name: Test for hostname
+#  raw: grep "^couchbase.host" /etc/hosts
+#  register: test_grep
+
+
+- name: add current  hostname to /etc/hosts
+  lineinfile:
+    dest: /etc/hosts
+    line: "{{ ansible_default_ipv4.address }} {{hostname_ouput.stdout}}"
+#  when: test_grep.stdout != ""
+
+
+
+
+
+#- name: copy oracle java
+#  copy:
+#     src:  files/jdk-8u181-linux-x64.rpm
+#     dest: /tmp/jdk-8u181-linux-x64.rpm
+
+
+#- name: yum install oracle java
+#  shell: yum -y install /tmp/jdk-8u181-linux-x64.rpm
+#  ignore_errors: yes
+
+
+- name: Install Cloudera Manager Agents
+  yum: name={{ item }} state=installed
+  with_items:
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-daemons-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+    - http://archive.cloudera.com/cm5/redhat/7/x86_64/cm/5.11/RPMS/x86_64/cloudera-manager-agent-5.11.2-1.cm5112.p0.6.el7.x86_64.rpm
+#    - postgresql-jdbc 
+
+
+- name: Configure Cloudera Manager Agent 'server_host'
+  lineinfile: dest=/etc/cloudera-scm-agent/config.ini regexp=^server_host line=server_host={{ hostvars[item].ansible_default_ipv4.address }}
+  with_items: "{{ groups['tag_scm_server'] }}"
+
+
+
+
+- name: Restart Cloudera Manager Agents
+  service: name=cloudera-scm-agent state=restarted enabled=yes
+
+
+
+- selinux:
+    state: disabled
+
+
+
+- name: reboot my server
+  shell: sleep 3 && reboot now
+  async: 1
+  poll:  0
+#  when: ansible_selinux is defined and ansible_selinux != False and ansible_selinux.status == 'enabled'
+#  when: ansible_selinux.stdout.find('enabled') != -1
+
+- name:  Wait till my server will come up
+  wait_for:
+     host: "{{ inventory_hostname  }}"
+     state: started
+     delay: 5
+     timeout: 60 
+  delegate_to: 127.0.0.1
+
+
+
+

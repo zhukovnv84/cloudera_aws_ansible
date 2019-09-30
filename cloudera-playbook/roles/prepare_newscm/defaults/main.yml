@@ -1,0 +1,5 @@
+---
+username: #nameoftheuser
+password_curl: #password
+cloudera_url: #host IP
+claudera_port: #port
